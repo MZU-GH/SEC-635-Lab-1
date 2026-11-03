@@ -1,0 +1,266 @@
+{%- macro c(parts) -%}{%- for p in parts -%}{{ p }}{%- endfor -%}{%- endmacro -%}
+{%- macro tref(k) -%}<a class="ref" href="#tab-{{ k }}">Table {{ k }}</a>{%- endmacro -%}
+{%- macro fref(k) -%}<a class="ref" href="#fig-{{ k }}">Figure {{ k }}</a>{%- endmacro -%}
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>SEC-635 Lab 1 — AI-Driven Detection</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- ======================================================= COVER -->
+<section class="cover">
+  <img class="logo" src="assets/zu_cti_logo.png" alt="Zayed University, College of Technological Innovation">
+  <div class="course">SEC-635 – AI for Cybersecurity</div>
+  <div class="term">Fall 2026</div>
+  <h1 class="title">Lab 1 — AI-Driven Detection</h1>
+  <div class="subtitle">Choosing a SOC classifier and finding attacks without labels on CSE-CIC-IDS2018</div>
+  <table class="team">
+    <thead><tr><th>Name</th><th>Student ID</th></tr></thead>
+    <tbody>
+      <tr><td>Ahmed Alnuaimi</td><td>M80009405</td></tr>
+      <tr><td>Mansour Alkaabi</td><td>M80009410</td></tr>
+      <tr><td>Ahmed Almansoori</td><td>M80009548</td></tr>
+    </tbody>
+  </table>
+  <div class="meta">
+    <div><span class="k">Instructor</span>Dr. Ahmad Samer Wazan</div>
+    <div><span class="k">Submitted</span>3 November 2026</div>
+    <div><span class="k">Repository</span><a href="https://github.com/MZU-GH/SEC-635-Lab-1">github.com/MZU-GH/SEC-635-Lab-1</a></div>
+  </div>
+  <div class="foot">College of Technological Innovation · Zayed University</div>
+</section>
+
+<!-- ======================================================= CONTENTS -->
+<nav class="toc">
+  <h1 class="unnum" style="border-bottom:0.6pt solid var(--navy)">Contents</h1>
+  <ol>
+    <li class="l1 l0"><a href="#s-exec">Executive summary</a></li>
+    <li class="l1"><a href="#s1">Methodology</a></li>
+    <li class="l2"><a href="#s1-1">Data and cleaning</a></li>
+    <li class="l2"><a href="#s1-2">Clock repair and the honest split</a></li>
+    <li class="l2"><a href="#s1-3">Task 1 configuration and evaluation</a></li>
+    <li class="l2"><a href="#s1-4">Task 2 configuration and evaluation</a></li>
+    <li class="l2"><a href="#s1-5">Reproducibility</a></li>
+    <li class="l1"><a href="#s2">Results and visualizations</a></li>
+    <li class="l1"><a href="#s3">Metric comparisons</a></li>
+    <li class="l2"><a href="#s3-1">Task 1: supervised classifiers</a></li>
+    <li class="l2"><a href="#s3-2">Task 2: unsupervised detectors</a></li>
+    <li class="l1"><a href="#s4">Critical reflection</a></li>
+    <li class="l2"><a href="#s4-1">Where each technique added value and fell short</a></li>
+    <li class="l2"><a href="#s4-2">What was found and what was missed (infiltration)</a></li>
+    <li class="l2"><a href="#s4-3">Limits</a></li>
+    <li class="l1"><a href="#s5">Production recommendation</a></li>
+    <li class="l1 l0"><a href="#s-refs">References</a></li>
+  </ol>
+</nav>
+
+<!-- ======================================================= EXECUTIVE SUMMARY -->
+<h1 class="unnum" id="s-exec">Executive summary</h1>
+<p>Two SOC problems on CSE-CIC-IDS2018 [1], on Wednesday brute force (FTP, SSH) and Thursday infiltration: which classifier to deploy (Task 1), and whether attacks can be found without labels (Task 2). All splits are time-ordered on a repaired clock.</p>
+<div class="keybox">
+  <ul>
+    <li><b>Task 1 answer: Random Forest (RF) for attack families with labelled history.</b> This model raises <b>{{ n.t3_wed80_rf_fa }}</b> false alerts per day ({{ n.c_ci }} CI {{ n.t3_wed80_rf_fa_lo }}–{{ n.t3_wed80_rf_fa_hi }}) on a brute-force campaign it has seen, and that is acceptable because it costs about {{ n.w80_hours }} analyst-hours per day at {{ n.c_min }} min per alert ({{ n.w80_shift }} of one {{ n.c_shift }}-hour shift) for {{ n.w80_recall }} recall. On Thursday infiltration the same model raises {{ n.t3_thu70_rf_fa }} false alerts per day, which is not acceptable (Section 5).</li>
+    <li><b>ML does not catch an unseen attack type; a rule does.</b> On {{ n.sp_wed70 }} the SSH attack was absent from training and RF recall was {{ n.t3_wed70_rf_recall }}, while the port 21/22 rule catches all of it (recall {{ n.t3_wed70_port_recall }}). The rule was written knowing the ports, so this favours it.</li>
+    <li><b>Clustering separates brute force without labels.</b> DBSCAN reaches F1 {{ n.wed_db_f1_4 }} on Wednesday for {{ n.t2_wed_dbscan_labels }} analyst labels. On infiltration all three detectors miss {{ n.t7_missed_share }} of the attack flows and a one-line zero-payload rule matches their F1 ({{ n.thu_pay_fd_f1 }} against {{ n.thu_best_det_f1 }}). The only finds no rule reproduces are the GMM-only ({{ n.t7_onlygmm_n }}) and DBSCAN-only ({{ n.t7_onlydb_n }}) long, near-silent connections.</li>
+    <li><b>Caveats.</b> The {{ n.t3_wed80_rf_fa }}/day rests on {{ n.t3_wed80_rf_fp }} false positives, and {{ n.sp_wed80 }} shares one SSH campaign between training and test (an optimistic bound). A random split inflates Thursday RF F1 by only {{ n.t4_thu_delta_rf }}; the unrepaired clock distorts far more.</li>
+    <li><b>The ceiling.</b> {{ n.t7_allatk_dup }} of sampled infiltration flows are feature-identical to some benign flow, so flow-level detection of infiltration is capped.</li>
+  </ul>
+</div>
+
+<!-- ======================================================= 1 METHODOLOGY -->
+<h1 id="s1">Methodology</h1>
+<h2 id="s1-1">Data and cleaning</h2>
+<p>Both days were cleaned in the same order: repeated header lines, rows dated {{ n.epoch }} and rows holding ±Infinity were removed, then constant columns were dropped (<a class="ref" href="#tab-1">Table 1</a>). NaNs occurred only in rows that also held Infinity ({{ n.p_wed_nanbefore }} and {{ n.p_thu_nanbefore }} rows). Duplicate flows were counted and kept: identical flows are legitimate repeated traffic. <i>Timestamp</i> and <i>Dst Port</i> were dropped as features (time reveals the attack window; ports {{ n.port_21 }} and {{ n.port_22 }} almost define the Wednesday labels); <i>Protocol</i> was kept. The label is binary. Thursday has no {{ n.epoch }} rows.</p>
+<div class="tabwrap" id="tab-1">
+  <p class="tcap">Data cleaning and class balance per day. Rows removed add up exactly to rows in file minus rows kept.</p>
+  <table class="bk">
+    <thead><tr><th class="l">Step</th><th>Wednesday 14-02-2018</th><th>Thursday 01-03-2018</th></tr></thead>
+    <tbody>
+    {%- for r in T1 %}
+      <tr><td class="l">{{ c(r.label) }}</td><td>{{ c(r.wed) }}</td><td>{{ c(r.thu) }}</td></tr>
+    {%- endfor %}
+    </tbody>
+  </table>
+</div>
+
+<h2 id="s1-2">Clock repair and the honest split</h2>
+<p>The raw hour histogram holds traffic in hours {{ n.h_a1 }}–{{ n.h_a2 }} and {{ n.h_b1 }}–{{ n.h_b2 }} and none in hours {{ n.h_g1 }}–{{ n.h_g2 }}, which fits a {{ n.clk_shift }}-hour clock written without AM/PM (the afternoon is stored as {{ n.h_a1 }}–{{ n.h_a2 }}). SSH brute force appears at raw {{ n.clk_wed_ssh_rf }}–{{ n.clk_wed_ssh_rl }} and becomes {{ n.clk_wed_ssh_ff }}–{{ n.clk_wed_ssh_fl }} after adding {{ n.clk_shift }} hours. The repair moved {{ n.p_wed_moved }} Wednesday and {{ n.p_thu_moved }} Thursday flows and leaves one daytime window per day ({{ n.p_wed_span }} h and {{ n.p_thu_span }} h). The evidence is data-internal only: the UNB schedule page could not be fetched, so the published schedule is not verified, and file order is not chronological ({{ n.p_wed_back }} backward steps on Wednesday).</p>
+<p>The first {{ n.frac_wed70 }} of flows in time train and the last {{ n.frac_30 }}% test (<a class="ref" href="#fig-1">Figure 1</a>, <a class="ref" href="#tab-2">Table 2</a>). {{ n.sp_wed70 }} tests SSH, never seen in training, so it measures unseen-attack behaviour, not leakage. We added {{ n.sp_wed80 }} after seeing that result, to test a known attack arriving later; its training and test windows share one SSH campaign, so it is an optimistic bound. {{ n.sp_thu70 }} cuts the second infiltration wave. <a class="ref" href="#tab-4">Table 4</a> shows why the split matters.</p>
+<figure id="fig-1">
+  <img src="{{ FIG }}/fig1_timeline.png" alt="Flows per five minutes by label after the clock fix">
+  <figcaption><b>The repaired clock gives each attack a compact window, and the cuts fall inside them.</b> Flows per {{ n.c_block }} min by label (log scale) after the clock fix, with the {{ n.frac_wed70 }} cut ({{ n.sp_wed70 }}, {{ n.t1_wed70_cut }}), the {{ n.frac_wed80 }} cut ({{ n.sp_wed80 }}, {{ n.t1_wed80_cut }}) and the {{ n.frac_thu70 }} cut ({{ n.sp_thu70 }}, {{ n.t1_thu70_cut }}). Top: Wednesday, where FTP trains and SSH tests. Bottom: Thursday, two infiltration waves.</figcaption>
+</figure>
+<div class="tabwrap" id="tab-2">
+  <p class="tcap">Time-ordered splits. Validation window = last {{ n.c_valfrac }} of the training rows, used for tuning only.</p>
+  <table class="bk">
+    <thead><tr><th class="l">Split</th><th>Cut</th><th class="l">Training attacks</th><th class="l">Test attacks</th><th>Test window (h)</th><th class="l">Validation-window attacks</th></tr></thead>
+    <tbody>
+    {%- for r in T2 %}
+      <tr><td class="l">{{ c(r.split) }}</td><td>{{ c(r.cut) }}</td><td class="l">{{ c(r.train) }}</td><td class="l">{{ c(r.test) }}</td><td>{{ c(r.hours) }}</td><td class="l">{{ c(r.val) }}</td></tr>
+    {%- endfor %}
+    </tbody>
+  </table>
+</div>
+
+<h2 id="s1-3">Task 1 configuration and evaluation</h2>
+<p><b>Models and preprocessing.</b> LogReg and Random Forest (RF; min_samples_leaf {{ n.cfg_rf_leaf }}) with balanced class weights, and an MLP with early stopping [2]; seed {{ n.c_seed }}. Final settings on {{ n.sp_wed70 }} / {{ n.sp_wed80 }} / {{ n.sp_thu70 }}: LogReg C = {{ n.t1_wed70_ch_lr }} / {{ n.t1_wed80_ch_lr }} / {{ n.t1_thu70_ch_lr }}; RF {{ n.t1_wed70_ch_rft }} / {{ n.t1_wed80_ch_rft }} / {{ n.t1_thu70_ch_rft }} trees; MLP layers {{ n.t1_wed70_ch_mlp }} / {{ n.t1_wed80_ch_mlp }} / {{ n.t1_thu70_ch_mlp }}. A signed log (no fitted parameters) is followed by a StandardScaler fitted on training rows only; threshold {{ n.c_thr }}.</p>
+<p><b>Tuning protocol.</b> The last {{ n.c_valfrac }} of the training rows form a time-ordered validation window. Grids: C {{ n.g_lr0 }}/{{ n.g_lr1 }}/{{ n.g_lr2 }}; RF trees {{ n.g_rft0 }}/{{ n.g_rft1 }}/{{ n.g_rft2 }} × leaf {{ n.g_rfl0 }}/{{ n.g_rfl1 }}/{{ n.g_rfl2 }}; MLP {{ n.g_mlp_a }}, {{ n.g_mlp_b }}-{{ n.g_mlp_b2 }}, {{ n.g_mlp_c }}-{{ n.g_mlp_c2 }}. A split is tuned only if its validation window has at least {{ n.c_minatk }} attacks <i>and</i> they are of a type in the fit part. {{ n.sp_wed70 }} was tuned (validation holds {{ n.t1_wed70_valatk }} FTP flows; F1 varies by at most {{ n.t1_wed70_sens_max }}) and {{ n.sp_thu70 }} was tuned (RF spread {{ n.t1_thu70_sens_rf }}; all families at most {{ n.t1_thu70_sens_max }}). {{ n.sp_wed80 }} was not: its {{ n.t1_wed80_valatk }} validation SSH flows were never seen by the fit part ({{ n.t1_wed80_fitatk }} FTP flows), every setting scores validation F1 of at most {{ n.t1_wed80_sens_top }}, so defaults were kept.</p>
+<p><b>Metrics.</b> Attack-class precision, recall, F1 and AP. F1 carries a {{ n.c_ci }} block-bootstrap interval ({{ n.c_block }}-minute blocks, {{ n.c_boot }} resamples) [8]; false-positive counts carry an exact Poisson {{ n.c_ci }} interval [10]; model pairs use McNemar's test [4] (exact if b + c &lt; {{ n.c_mcn }}). <b>False alerts per day (Task 1)</b> = benign flows flagged ÷ test-window hours × {{ n.c_day }}.</p>
+
+<h2 id="s1-4">Task 2 configuration and evaluation</h2>
+<p><b>Setup.</b> Labels were set aside first. A systematic sample of {{ n.t2_n }} flows per day (every {{ n.t2_wed_step }}th Wednesday, {{ n.t2_thu_step }}th Thursday flow) was signed-log transformed, scaled and reduced to {{ n.t2_npca }} PCA components. <b>K-Means</b> [9]: k {{ n.g2_k_lo }}–{{ n.g2_k_hi }} × {{ n.g2_km_seeds }} seeds, silhouette [6] on {{ n.t2_sil }} rows. <b>GMM</b>: {{ n.g2_gmm_lo }}–{{ n.g2_gmm_thu_hi }} components ({{ n.g2_gmm_wed_hi }} on Wednesday), full or diagonal covariance, BIC [7]. <b>DBSCAN</b> [5]: {{ n.g2_eps_n }} eps values from the k-distance curve × min_samples {{ n.g2_ms0 }}, {{ n.g2_ms1 }}, {{ n.g2_ms2 }}, {{ n.g2_ms3 }}, silhouette over settings with at most {{ n.g2_noise_cap }} noise; noise is triaged as its own cluster. A simulated analyst labels each cluster by the majority of {{ n.t2_triage }} random flows; labels spent are the cost. Extra sweeps vary PCA dimensions, sample size, triage size and analyst error. Results are seed means (K-Means {{ n.t2_km_seeds }}, GMM and DBSCAN {{ n.t2_gmm_seeds }} seeds). <b>Baselines:</b> the port {{ n.port_21 }}/{{ n.port_22 }} rule alerts on destination port {{ n.port_21 }} or {{ n.port_22 }}; the zero-payload rule alerts when forward and backward payload bytes are both zero and duration is below {{ n.pl_dur }} µs.</p>
+<p><b>False alerts per day (Task 2) use the measured span, not {{ n.t2_cap }} h.</b> The reported value is sample false-positive rate × the day's benign flows × 24 ÷ {{ n.t2_cap }}; we rescale it as <i>reported × {{ n.t2_cap }} ÷ measured span</i>. The flows span {{ n.t2_wed_span }} h (Wednesday) and {{ n.t2_thu_span }} h (Thursday), so both tasks use the traffic rate in the data. Task 1 and Task 2 false-alert numbers have different denominators and are never compared in one row.</p>
+
+<h2 id="s1-5">Reproducibility</h2>
+<p>One command (<i>run_all.sh</i>) rebuilds results, figures and this PDF; <i>scripts/check_report_numbers.py</i> checks every printed number against <i>results/report_registry.json</i>. Repository: <a href="https://github.com/MZU-GH/SEC-635-Lab-1">github.com/MZU-GH/SEC-635-Lab-1</a>.</p>
+
+<!-- ======================================================= 2 RESULTS -->
+<h1 id="s2">Results and visualizations</h1>
+<figure id="fig-2">
+  <img class="full" src="{{ FIG }}/fig2_confusion.png" alt="Confusion matrices">
+  <figcaption><b>RF is near-perfect on a seen campaign ({{ n.t3_wed80_rf_fp }} false positives, {{ n.t3_wed80_rf_fn }} misses on {{ n.sp_wed80 }}) and unusable on Thursday.</b> Confusion matrices on the time-ordered test windows (rows: true label; cell shading is log-scaled).</figcaption>
+</figure>
+<p>On {{ n.sp_wed70 }} every model catches the same {{ n.t3_wed70_rf_tp }} of {{ n.t1_wed70_testatk }} SSH flows. On {{ n.sp_thu70 }} RF flags {{ n.thu_benign_flagged }} of benign flows ({{ n.t3_thu70_rf_fp }}) and misses {{ n.thu_miss }} of attacks ({{ n.t3_thu70_rf_fn }}); the MLP trades recall ({{ n.t3_thu70_mlp_recall }}) for precision.</p>
+<p>On {{ n.sp_wed70 }} LogReg scores SSH below {{ n.c_thr }}, yet a threshold set for {{ n.br_budget_hi }} false alerts per day would reach {{ n.br_wed70_lr_10000 }} recall. On {{ n.sp_thu70 }} all curves approach the chance level of {{ n.t1_thu70_chance }} (AP {{ n.t3_thu70_lr_ap }}–{{ n.t3_thu70_rf_ap }}). On Wednesday the detectors recover both attack groups; on Thursday most infiltration flows (<a class="ref" href="#fig-4">Figure 4</a>, pink) sit on benign clusters, and a 2-D projection of {{ n.t2_npca }} components cannot show overlap, so <a class="ref" href="#tab-7">Table 7</a> measures it in full feature space.</p>
+<figure id="fig-3">
+  <img src="{{ FIG }}/fig3_pr.png" alt="Precision-recall curves">
+  <figcaption><b>LogReg ranks unseen SSH well (AP {{ n.t3_wed70_lr_ap }}) yet its {{ n.c_thr }} threshold misses it: thresholds matter.</b> Attack-class precision–recall curves; chance level (attack share) dotted.</figcaption>
+</figure>
+<figure id="fig-4">
+  <img src="{{ FIG }}/fig4_clusters.png" alt="Clusters on the first two principal components">
+  <figcaption><b>Wednesday attacks form compact groups detectors isolate; Thursday attacks lie inside the benign cloud.</b> {{ n.t2_plot }} of the {{ n.t2_n }} sampled flows per day (random subsample) on PC1/PC2; left: true labels; others: detector result.</figcaption>
+</figure>
+<figure id="fig-5">
+  <img src="{{ FIG }}/fig5_sweeps.png" alt="Parameter sweeps for every Task 2 algorithm">
+  <figcaption><b>Wednesday F1 sits on a wide plateau, but Thursday F1 stays low except at extreme settings, and the label-free choice (star) is rarely the best value.</b> Attack F1 after triage per parameter (top Wednesday, bottom Thursday); K-Means band: min–max over {{ n.g2_km_seeds }} seeds; DBSCAN: one line per min_samples.</figcaption>
+</figure>
+
+<p>K-Means F1 flattens after the chosen k. The Wednesday GMM plateaus early, yet its BIC kept improving to the grid edge ({{ n.t2_wed_gmm_k }} components): an edge, not an optimum. DBSCAN drops at large eps on both days, where clusters merge, and on Thursday no setting exceeds F1 {{ n.t2_thu_db_fmax }}.</p>
+
+<!-- ======================================================= 3 METRIC COMPARISONS -->
+<h1 id="s3">Metric comparisons</h1>
+<h2 id="s3-1">Task 1: supervised classifiers</h2>
+<div class="tabwrap" id="tab-3">
+  <p class="tcap">Task 1, attack class, time-ordered test windows. FP = benign flows flagged. False alerts/day = FP ÷ test hours × {{ n.c_day }}, with exact Poisson {{ n.c_ci }} CI. Bold: best F1 and fewest false alerts per split. Rules have no score, so no AP.</p>
+  <table class="bk">
+    <thead><tr><th class="l">Split / model</th><th>Precision</th><th>Recall</th><th>F1</th><th>F1 {{ n.c_ci }} CI</th><th>AP</th><th>FP</th><th>False alerts/day [{{ n.c_ci }} CI]</th></tr></thead>
+    <tbody>
+    {%- for g in T3 %}
+      <tr class="grp"><td colspan="9">{{ g.name }}</td></tr>
+      {%- for r in g.rows %}
+      <tr><td class="l ind{% if r.rule %} rule-row{% endif %}">{{ r.model }}</td><td>{{ c(r.prec) }}</td><td>{{ c(r.rec) }}</td><td{% if r.f1_bold %} class="b"{% endif %}>{{ c(r.f1) }}</td><td>{{ c(r.ci) }}</td><td>{{ c(r.ap) }}</td><td>{{ c(r.fp) }}</td><td{% if r.fa_bold %} class="b"{% endif %}>{{ c(r.fa) }}</td></tr>
+      {%- endfor %}
+    {%- endfor %}
+    </tbody>
+  </table>
+</div>
+<p><b>Wednesday.</b> On {{ n.sp_wed70 }} the models are equally blind (recall {{ n.t3_wed70_rf_recall }}) while the port rule scores F1 {{ n.t3_wed70_port_f1 }}. On {{ n.sp_wed80 }} RF and MLP are indistinguishable (F1 {{ n.t3_wed80_rf_f1 }}, {{ n.t3_wed80_mlp_f1 }}), the port rule matches them on detection (F1 {{ n.t3_wed80_port_f1 }}), and RF's measured advantage is false alerts: {{ n.t3_wed80_rf_fa }} per day against {{ n.t3_wed80_port_fa }}, with non-overlapping intervals. <b>Thursday.</b> No model works: RF F1 {{ n.t3_thu70_rf_f1 }}, LogReg {{ n.t3_thu70_lr_f1 }}, MLP {{ n.t3_thu70_mlp_f1 }}, at {{ n.t3_thu70_mlp_fa }}–{{ n.t3_thu70_rf_fa }} false alerts per day; the port rule catches {{ n.thu_port_rec_t1 }} of infiltration and the zero-payload rule (F1 {{ n.t3_thu70_pay_f1 }}) is no better than the best classifier.</p>
+
+<div class="tabwrap" id="tab-4">
+  <p class="tcap">Does the split matter? F1 under a random split, the honest time split and (Thursday) the unrepaired clock, run for RF only. Thursday time-split cells carry the {{ n.c_ci }} block-bootstrap CI.</p>
+  <table class="bk">
+    <thead><tr><th class="l">Evaluation</th><th>LogReg</th><th>RF</th><th>MLP</th></tr></thead>
+    <tbody>
+    {%- for r in T4 %}
+      <tr><td class="l">{{ c(r.label) }}</td>{% for cell in r.cells %}<td>{{ c(cell) }}</td>{% endfor %}</tr>
+    {%- endfor %}
+    </tbody>
+  </table>
+</div>
+<p><b>The split matters little on Wednesday and moderately on Thursday; the clock matters most.</b> On Wednesday random-split inflation is negligible (F1 differs by at most {{ n.t4_wed_delta_lr }}) because brute force is trivially separable. On Thursday all three models score higher on a random split (LogReg +{{ n.t4_thu_delta_lr }}, RF +{{ n.t4_thu_delta_rf }}, MLP +{{ n.t4_thu_delta_mlp }}), yet each random value lies inside its time-split CI, so the direction is consistent but the size is uncertain. The unrepaired clock is the largest distortion: Thursday RF scores {{ n.t4_thu_unrep_rf }}, outside the time-split CI [{{ n.t4_thu_ci_rf_lo }}, {{ n.t4_thu_ci_rf_hi }}]. The earlier comparison against {{ n.sp_wed70 }} mixed leakage with an unseen attack type (RF F1 {{ n.t4_wed70_rf }}) and is withdrawn.</p>
+<p><b>Significance</b> (McNemar; b = flows only the first model gets right, c = only the second). {{ n.sp_wed80 }}: RF vs MLP is a tie (b = {{ n.mc_wed80_rf_mlp_b }}, c = {{ n.mc_wed80_rf_mlp_c }}, {{ n.mc_wed80_rf_mlp_p.p }}); both beat LogReg ({{ n.mc_wed80_lr_rf_p.p }}); RF beats the port rule ({{ n.mc_wed80_port_rf_p.p }}), with {{ n.mc_wed80_port_rf_b }} errors against {{ n.mc_wed80_port_rf_c }}. On {{ n.sp_wed70 }} pairs differ only through a few false positives ({{ n.mc_wed70_lr_rf_p.p }}). {{ n.sp_thu70 }}: every pair differs ({{ n.mc_thu70_lr_rf_p.p }}, {{ n.mc_thu70_rf_mlp_p.p }}, {{ n.mc_thu70_port_rf_p.p }} for RF vs the port rule), but McNemar treats flows as independent and the block-bootstrap CIs overlap widely (RF [{{ n.t4_thu_ci_rf_lo }}, {{ n.t4_thu_ci_rf_hi }}], MLP [{{ n.t4_thu_ci_mlp_lo }}, {{ n.t4_thu_ci_mlp_hi }}]), so the ranking is weak evidence.</p>
+
+<h2 id="s3-2">Task 2: unsupervised detectors</h2>
+<div class="tabwrap" id="tab-5">
+  <p class="tcap">Task 2 on the {{ n.t2_n }}-flow samples, detectors chosen without labels. F1 is the seed mean, with its min–max over seeds. False alerts/day use the measured-span convention (Section 1.4). Bold: best F1 and fewest false alerts per day.</p>
+  <table class="bk">
+    <thead><tr><th class="l">Day / method</th><th class="l">Chosen setting</th><th>Precision</th><th>Recall</th><th>F1</th><th>F1 seed range</th><th>Analyst labels</th><th>False alerts/day</th><th class="l">At edge?</th></tr></thead>
+    <tbody>
+    {%- for g in T5 %}
+      <tr class="grp"><td colspan="9">{{ g.name }}</td></tr>
+      {%- for r in g.rows %}
+      <tr><td class="l ind">{{ r.model }}</td><td class="l">{{ c(r.cfg) }}</td><td>{{ c(r.prec) }}</td><td>{{ c(r.rec) }}</td><td{% if r.f1_bold %} class="b"{% endif %}>{{ c(r.f1) }}</td><td>{{ c(r.seed) }}</td><td>{{ c(r.labels) }}</td><td{% if r.fa_bold %} class="b"{% endif %}>{{ c(r.fa) }}</td><td class="l">{{ r.edge }}</td></tr>
+      {%- endfor %}
+    {%- endfor %}
+    </tbody>
+  </table>
+</div>
+<p><b>Wednesday.</b> All three detectors separate brute force; DBSCAN (F1 {{ n.wed_db_f1_4 }}) matches the port rule (F1 {{ n.wed_port_f1_4 }}) at fewer false alerts per day ({{ n.t2_wed_dbscan_fa }} against {{ n.t2_wed_port_sample_fa }}) for {{ n.t2_wed_dbscan_labels }} analyst labels, while K-Means raises {{ n.t2_wed_kmeans_fa }} per day (F1 {{ n.wed_km_f1_3 }}). <b>Thursday.</b> F1 is {{ n.thu_km_f1 }} (K-Means), {{ n.thu_gmm_f1 }} (GMM) and {{ n.thu_db_f1 }} (DBSCAN); the zero-payload rule scores {{ n.t5_thu_payload_f1 }} on the same sample with no labels.</p>
+<div class="tabwrap" id="tab-6">
+  <p class="tcap">Stability: seed-mean attack F1 range (min–max). Local = within one grid step of the choice; PCA {{ n.sw_pca_dims_0 }}–{{ n.sw_pca_dims_3 }} components (and {{ n.t2_wed_pca95 }}/{{ n.t2_thu_pca95 }} for {{ n.c_ci }} variance); sample {{ n.sw_sample_size_0 }}–{{ n.sw_sample_size_3 }} flows; triage {{ n.sw_triage_n_0 }}–{{ n.sw_triage_n_3 }} flows per cluster; analyst error {{ n.sw_analyst_error_0 }}–{{ n.sw_analyst_error_2 }}.</p>
+  <table class="bk">
+    <thead><tr><th class="l">Day</th><th class="l">Detector</th><th>Local (±1 step)</th><th>PCA dims</th><th>Sample size</th><th>Triage n</th><th>Analyst error</th></tr></thead>
+    <tbody>
+    {%- for r in T6 %}
+      <tr><td class="l">{{ r.day }}</td><td class="l">{{ r.algo }}</td>{% for cell in r.cells %}<td>{{ c(cell) }}</td>{% endfor %}</tr>
+    {%- endfor %}
+    </tbody>
+  </table>
+</div>
+<p><b>Stability.</b> On Thursday the detectors lie within {{ n.thu_spread }} F1 and their seed ranges overlap ({{ n.thu_overlap_lo }}–{{ n.thu_overlap_hi }}), so they cannot be ranked. F1 moves most with triage size for K-Means ({{ n.t6_thu_kmeans_triage_n_span }}), PCA dimension for DBSCAN ({{ n.t6_thu_dbscan_pca_dims_span }}) and sample size for GMM ({{ n.t6_thu_gmm_sample_size_span }}); analyst error up to {{ n.sw_analyst_error_2 }} moves it by at most {{ n.sw_err_max }}. Only {{ n.t2_thu_db_valid }} of {{ n.t2_thu_db_all }} Thursday DBSCAN settings meet the noise cap, and F1 spans {{ n.t2_thu_db_fmin }}–{{ n.t2_thu_db_fmax }}.</p>
+
+<!-- ======================================================= 4 CRITICAL REFLECTION -->
+<h1 id="s4">Critical reflection</h1>
+<h2 id="s4-1">Where each technique added value and fell short</h2>
+<p class="lead"><b>Supervised, value.</b> RF is near-perfect on a campaign it has seen: on {{ n.sp_wed80 }} F1 {{ n.t3_wed80_rf_f1 }} at {{ n.t3_wed80_rf_fa }} false alerts per day, the lowest point estimate there (LogReg {{ n.t3_wed80_lr_fa }}, port rule {{ n.t3_wed80_port_fa }}; the MLP's {{ n.t3_wed80_mlp_fa }} [{{ n.t3_wed80_mlp_fa_lo }}–{{ n.t3_wed80_mlp_fa_hi }}] overlaps). Brute-force flows are easy to separate: the median found brute-force flow has {{ n.w_med_pps_att }} packets/s and a {{ n.w_med_win_att }}-byte initial window, against {{ n.w_med_pps_ben }} and {{ n.w_med_win_ben }} for benign. <b>Shortfall.</b> RF is blind to an unseen attack type (recall {{ n.t3_wed70_rf_recall }} on {{ n.sp_wed70 }}; the port rule {{ n.t3_wed70_port_recall }}). On infiltration it flags {{ n.thu_benign_flagged }} of benign traffic at threshold {{ n.c_thr }}, and a threshold chosen on validation for at most {{ n.c_budget }} false alerts per day gives {{ n.thu_op_fa }} on test ({{ n.thu_op_x }}× the budget, recall {{ n.thu_op_recall }}) against {{ n.thu_op_val_fa }} on validation: the budget does not transfer between windows (distribution shift).</p>
+<p class="lead"><b>Unsupervised, value.</b> Wednesday brute force is separated without labels: DBSCAN reaches F1 {{ n.wed_db_f1_4 }} at {{ n.t2_wed_dbscan_fa }} false alerts per day for {{ n.t2_wed_dbscan_labels }} analyst labels, GMM F1 {{ n.wed_gmm_f1_4 }}. <b>Shortfall.</b> The selection criteria are unstable at the grid edges. GMM BIC never turns by {{ n.g2_gmm_wed_hi }} components on Wednesday. DBSCAN silhouette keeps rising past min_samples {{ n.t2_wed_db_ms }}: it goes from {{ n.t2_wed_ext_sil0 }} to {{ n.t2_wed_ext_sil1 }} (min_samples {{ n.t2_wed_ext_ms }}) on Wednesday and from {{ n.t2_thu_ext_sil0 }} to {{ n.t2_thu_ext_sil1 }} ({{ n.t2_thu_ext_ms }}) on Thursday, while F1 falls from {{ n.t2_wed_ext_f0 }} to {{ n.t2_wed_ext_f1 }} and from {{ n.t2_thu_ext_f0 }} to {{ n.t2_thu_ext_f1 }}. The label-free choice is not settled.</p>
+
+<h2 id="s4-2">What was found and what was missed (infiltration)</h2>
+<p><a class="ref" href="#tab-7">Table 7</a> compares the groups. <b>(a) Most clustering finds are reproducible by one line.</b> The zero-payload rule catches {{ n.t7_found_pay }} of the {{ n.t7_found_n }} flows any detector found ({{ n.t7_found_pay_share }}); the port rule catches {{ n.t7_found_port }}. <b>(b) The interesting finds are the single-algorithm ones no rule reproduces.</b> The GMM-only ({{ n.t7_onlygmm_n }}) and DBSCAN-only ({{ n.t7_onlydb_n }}) groups are long, near-silent connections (median {{ n.t7_onlygmm_dur }} and {{ n.t7_onlydb_dur }} µs); the payload rule catches {{ n.t7_onlygmm_pay }} and {{ n.t7_onlydb_pay }} of them, the port rule {{ n.t7_onlygmm_port }} and {{ n.t7_onlydb_port }}. <b>(c) Missed flows look like benign traffic.</b> {{ n.t7_missed_nn }} of the {{ n.t7_missed_n }} flows missed by all have mostly benign neighbours, against {{ n.t7_found_nn }} of found flows; their top ports are {{ n.port_p53 }}, {{ n.port_p443 }} and {{ n.port_p3389 }} ({{ n.port_p53_share }}, {{ n.port_p443_share }}, {{ n.port_p3389_share }}). <b>(d) Label noise caps any flow-level detector.</b> {{ n.t7_allatk_dup }} of all sampled infiltration flows ({{ n.t7_found_dup }} of the found ones, {{ n.t7_missed_dup }} of the missed) are feature-identical to a benign flow, because infiltration labels are assigned by host and time window [3]. It does not separate found from missed but explains why found clusters carry false alerts.</p>
+<div class="tabwrap" id="tab-7">
+  <p class="tcap">Thursday infiltration in the {{ n.t2_n }}-flow sample: found versus missed. Medians per group (B = total payload bytes). Payload and port rule: flows caught (share of group). Identical to benign: all model features equal to a benign flow anywhere in the day. Benign neighbours: more than {{ n.t7_nnhalf }} of {{ n.t7_nnk }} nearest PCA-space neighbours in the sample are benign.</p>
+  <table class="bk">
+    <thead><tr><th class="l">Group</th><th>Flows</th><th>Dur. (µs)</th><th>Fwd / bwd B</th><th>Pkts/s</th><th>Init. win.</th><th>Payload rule</th><th>Port rule</th><th>Identical to benign</th><th>Benign nbrs</th></tr></thead>
+    <tbody>
+    {%- for r in T7 %}
+      <tr><td class="l">{{ r.label }}</td><td>{{ c(r.n) }}</td><td>{{ c(r.dur) }}</td><td>{{ c(r.fwdbwd) }}</td><td>{{ c(r.pps) }}</td><td>{{ c(r.win) }}</td><td>{{ c(r.pay) }}</td><td>{{ c(r.port) }}</td><td>{{ c(r.dup) }}</td><td>{{ c(r.nn) }}</td></tr>
+    {%- endfor %}
+    </tbody>
+  </table>
+  <p class="tnote">Not computed per single-detector group (–); for benign flows the first test is trivially true.</p>
+</div>
+
+<h2 id="s4-3">Limits</h2>
+<p>The analyst is assumed error-free in the headline results (error of {{ n.sw_analyst_error_0 }}–{{ n.sw_analyst_error_2 }} moves F1 by at most {{ n.sw_err_max }}). Daily counts assume a constant rate over {{ n.t2_wed_span }} h and {{ n.t2_thu_span }} h spans. The port rule was written with hindsight. The GMM grid uses a single seed; each sample is {{ n.t2_n }} flows. {{ n.sp_wed80 }} is an optimistic bound. The attack schedule was not verified externally.</p>
+
+<!-- ======================================================= 5 PRODUCTION -->
+<h1 id="s5">Production recommendation</h1>
+<p><b>Random Forest on Wednesday-like brute force: this model raises {{ n.t3_wed80_rf_fa }} false alerts per day ({{ n.c_ci }} CI {{ n.t3_wed80_rf_fa_lo }}–{{ n.t3_wed80_rf_fa_hi }}), and here is why that is acceptable:</b> at {{ n.c_min }} minute per alert it costs {{ n.w80_hours }} analyst-hours per day ({{ n.w80_shift }} of one {{ n.c_shift }}-hour shift; {{ n.w80_hours_hi }} hours at the upper CI bound) while it catches {{ n.w80_recall }} of a campaign it has seen.</p>
+<p><b>Random Forest on Thursday infiltration: this model raises {{ n.t3_thu70_rf_fa }} false alerts per day, and here is why that is not acceptable:</b> that is {{ n.thu_hours }} analyst-hours per day, or {{ n.thu_analysts }} analysts on {{ n.c_shift }}-hour shifts, and it still catches only {{ n.thu_recall }} of infiltration flows. A validation-chosen threshold still gives {{ n.thu_op_fa }} per day at {{ n.thu_op_recall }} recall.</p>
+<div class="tabwrap" id="tab-8">
+  <p class="tcap">What to deploy and what it costs. False alerts/day: Task 1 convention (supervised, port rule) or Task 2 measured-span convention (clustering, payload rule); not comparable across rows.</p>
+  <table class="bk t8">
+    <colgroup><col style="width:15%"><col style="width:27%"><col style="width:58%"></colgroup>
+    <thead><tr><th>Technique</th><th>Deploy as</th><th>Measured cost</th></tr></thead>
+    <tbody>
+      <tr><td>Port 21/22 rule</td><td>FTP/SSH brute-force alerting.</td><td>{{ n.t8_port_lo }}–{{ n.t8_port_hi }} false alerts/day (Wednesday windows); recall {{ n.thu_port_rec_t1 }} on infiltration; no labels.</td></tr>
+      <tr><td>Random Forest</td><td>Second-line scoring, labelled families.</td><td>{{ n.t3_wed80_rf_fa }} false alerts/day on {{ n.sp_wed80 }} ({{ n.t8_rf_x_rule }} fewer than the rule); recall {{ n.t3_wed70_rf_recall }} on unseen attacks; {{ n.tim_wed80_rf }} s training.</td></tr>
+      <tr><td>GMM / DBSCAN</td><td>Daily hunting review, not alerting.</td><td>{{ n.t8_lab_lo }}–{{ n.t8_lab_hi }} labels per {{ n.t2_n }} flows; {{ n.t8_gmfa_lo }}–{{ n.t8_gmfa_hi }} (GMM), {{ n.t8_dbfa_lo }}–{{ n.t8_dbfa_hi }} (DBSCAN) false alerts/day if alerting.</td></tr>
+      <tr><td>Zero-payload rule</td><td>Hunting query, not an alert.</td><td>{{ n.t8_thu_pay_fa }} false alerts/day at recall {{ n.thu_pay_fd_rec }}, precision {{ n.thu_pay_fd_prec }}.</td></tr>
+      <tr><td>Not deployed</td><td>LogReg, MLP, K-Means.</td><td>LogReg ({{ n.t3_wed80_lr_fa }} false alerts/day, {{ n.w80_mlp_gap }}× RF); MLP (ties RF, {{ n.mc_wed80_rf_mlp_p.p }}; recall {{ n.t3_thu70_mlp_recall }} on Thursday); K-Means ({{ n.t2_wed_kmeans_fa }} false alerts/day on Wednesday).</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+<p><b>Do this.</b> Fix the clock at ingestion. Retrain on a rolling, time-ordered schedule and keep a rule for unlabelled attack types. Move infiltration detection to host and session level: flow features carry no signal for {{ n.t7_allatk_dup }} of it.</p>
+<p class="repo">Repository: <a href="https://github.com/MZU-GH/SEC-635-Lab-1">github.com/MZU-GH/SEC-635-Lab-1</a></p>
+
+<!-- ======================================================= REFERENCES -->
+<h1 class="unnum" id="s-refs">References</h1>
+<div class="refs" style="columns:2; column-gap:6mm">
+<p>[1] Canadian Institute for Cybersecurity, “CSE-CIC-IDS2018,” Univ. of New Brunswick. [Online]. Available: https://www.unb.ca/cic/datasets/ids-2018.html</p>
+<p>[2] F. Pedregosa et al., “Scikit-learn: Machine learning in Python,” JMLR, vol. 12, pp. 2825–2830, 2011.</p>
+<p>[3] I. Sharafaldin, A. H. Lashkari, and A. A. Ghorbani, “Toward generating a new intrusion detection dataset and intrusion traffic characterization,” in Proc. ICISSP, 2018, pp. 108–116.</p>
+<p>[4] Q. McNemar, “Note on the sampling error of the difference between correlated proportions or percentages,” Psychometrika, vol. 12, pp. 153–157, 1947.</p>
+<p>[5] M. Ester, H.-P. Kriegel, J. Sander, and X. Xu, “A density-based algorithm for discovering clusters in large spatial databases with noise,” in Proc. KDD, 1996, pp. 226–231.</p>
+<p>[6] P. J. Rousseeuw, “Silhouettes: A graphical aid to the interpretation and validation of cluster analysis,” J. Comput. Appl. Math., vol. 20, pp. 53–65, 1987.</p>
+<p>[7] G. Schwarz, “Estimating the dimension of a model,” Ann. Statist., vol. 6, pp. 461–464, 1978.</p>
+<p>[8] H. R. Künsch, “The jackknife and the bootstrap for general stationary observations,” Ann. Statist., vol. 17, pp. 1217–1241, 1989.</p>
+<p>[9] S. Lloyd, “Least squares quantization in PCM,” <i>IEEE Trans. Inf. Theory</i>, vol. 28, no. 2, pp. 129–137, 1982.</p>
+<p>[10] F. Garwood, “Fiducial limits for the Poisson distribution,” <i>Biometrika</i>, vol. 28, pp. 437–442, 1936.</p>
+</div>
+</body>
+</html>

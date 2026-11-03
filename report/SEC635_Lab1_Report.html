@@ -1,0 +1,290 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>SEC-635 Lab 1 — AI-Driven Detection</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- ======================================================= COVER -->
+<section class="cover">
+  <img class="logo" src="assets/zu_cti_logo.png" alt="Zayed University, College of Technological Innovation">
+  <div class="course">SEC-635 – AI for Cybersecurity</div>
+  <div class="term">Fall 2026</div>
+  <h1 class="title">Lab 1 — AI-Driven Detection</h1>
+  <div class="subtitle">Choosing a SOC classifier and finding attacks without labels on CSE-CIC-IDS2018</div>
+  <table class="team">
+    <thead><tr><th>Name</th><th>Student ID</th></tr></thead>
+    <tbody>
+      <tr><td>Ahmed Alnuaimi</td><td>M80009405</td></tr>
+      <tr><td>Mansour Alkaabi</td><td>M80009410</td></tr>
+      <tr><td>Ahmed Almansoori</td><td>M80009548</td></tr>
+    </tbody>
+  </table>
+  <div class="meta">
+    <div><span class="k">Instructor</span>Dr. Ahmad Samer Wazan</div>
+    <div><span class="k">Submitted</span>3 November 2026</div>
+    <div><span class="k">Repository</span><a href="https://github.com/MZU-GH/SEC-635-Lab-1">github.com/MZU-GH/SEC-635-Lab-1</a></div>
+  </div>
+  <div class="foot">College of Technological Innovation · Zayed University</div>
+</section>
+
+<!-- ======================================================= CONTENTS -->
+<nav class="toc">
+  <h1 class="unnum" style="border-bottom:0.6pt solid var(--navy)">Contents</h1>
+  <ol>
+    <li class="l1 l0"><a href="#s-exec">Executive summary</a></li>
+    <li class="l1"><a href="#s1">Methodology</a></li>
+    <li class="l2"><a href="#s1-1">Data and cleaning</a></li>
+    <li class="l2"><a href="#s1-2">Clock repair and the honest split</a></li>
+    <li class="l2"><a href="#s1-3">Task 1 configuration and evaluation</a></li>
+    <li class="l2"><a href="#s1-4">Task 2 configuration and evaluation</a></li>
+    <li class="l2"><a href="#s1-5">Reproducibility</a></li>
+    <li class="l1"><a href="#s2">Results and visualizations</a></li>
+    <li class="l1"><a href="#s3">Metric comparisons</a></li>
+    <li class="l2"><a href="#s3-1">Task 1: supervised classifiers</a></li>
+    <li class="l2"><a href="#s3-2">Task 2: unsupervised detectors</a></li>
+    <li class="l1"><a href="#s4">Critical reflection</a></li>
+    <li class="l2"><a href="#s4-1">Where each technique added value and fell short</a></li>
+    <li class="l2"><a href="#s4-2">What was found and what was missed (infiltration)</a></li>
+    <li class="l2"><a href="#s4-3">Limits</a></li>
+    <li class="l1"><a href="#s5">Production recommendation</a></li>
+    <li class="l1 l0"><a href="#s-refs">References</a></li>
+  </ol>
+</nav>
+
+<!-- ======================================================= EXECUTIVE SUMMARY -->
+<h1 class="unnum" id="s-exec">Executive summary</h1>
+<p>Two SOC problems on CSE-CIC-IDS2018 [1], on Wednesday brute force (FTP, SSH) and Thursday infiltration: which classifier to deploy (Task 1), and whether attacks can be found without labels (Task 2). All splits are time-ordered on a repaired clock.</p>
+<div class="keybox">
+  <ul>
+    <li><b>Task 1 answer: Random Forest (RF) for attack families with labelled history.</b> This model raises <b>49</b> false alerts per day (95% CI 18–107) on a brute-force campaign it has seen, and that is acceptable because it costs about 0.8 analyst-hours per day at 1 min per alert (10% of one 8-hour shift) for 99.99% recall. On Thursday infiltration the same model raises 131,693 false alerts per day, which is not acceptable (Section 5).</li>
+    <li><b>ML does not catch an unseen attack type; a rule does.</b> On Wed 70% the SSH attack was absent from training and RF recall was 0.0002, while the port 21/22 rule catches all of it (recall 1.000). The rule was written knowing the ports, so this favours it.</li>
+    <li><b>Clustering separates brute force without labels.</b> DBSCAN reaches F1 0.9994 on Wednesday for 700 analyst labels. On infiltration all three detectors miss 70% of the attack flows and a one-line zero-payload rule matches their F1 (0.387 against 0.388). The only finds no rule reproduces are the GMM-only (85) and DBSCAN-only (97) long, near-silent connections.</li>
+    <li><b>Caveats.</b> The 49/day rests on 6 false positives, and Wed 80% shares one SSH campaign between training and test (an optimistic bound). A random split inflates Thursday RF F1 by only 0.102; the unrepaired clock distorts far more.</li>
+    <li><b>The ceiling.</b> 40% of sampled infiltration flows are feature-identical to some benign flow, so flow-level detection of infiltration is capped.</li>
+  </ul>
+</div>
+
+<!-- ======================================================= 1 METHODOLOGY -->
+<h1 id="s1">Methodology</h1>
+<h2 id="s1-1">Data and cleaning</h2>
+<p>Both days were cleaned in the same order: repeated header lines, rows dated 1970 and rows holding ±Infinity were removed, then constant columns were dropped (<a class="ref" href="#tab-1">Table 1</a>). NaNs occurred only in rows that also held Infinity (2,277 and 1,834 rows). Duplicate flows were counted and kept: identical flows are legitimate repeated traffic. <i>Timestamp</i> and <i>Dst Port</i> were dropped as features (time reveals the attack window; ports 21 and 22 almost define the Wednesday labels); <i>Protocol</i> was kept. The label is binary. Thursday has no 1970 rows.</p>
+<div class="tabwrap" id="tab-1">
+  <p class="tcap">Data cleaning and class balance per day. Rows removed add up exactly to rows in file minus rows kept.</p>
+  <table class="bk">
+    <thead><tr><th class="l">Step</th><th>Wednesday 14-02-2018</th><th>Thursday 01-03-2018</th></tr></thead>
+    <tbody>
+      <tr><td class="l">Rows in file</td><td>1,048,575</td><td>331,125</td></tr>
+      <tr><td class="l">Removed: repeated header lines / rows dated 1970 / rows with ±Infinity</td><td>0 / 5 / 3,824</td><td>25 / 0 / 2,919</td></tr>
+      <tr><td class="l">Rows kept</td><td>1,044,746</td><td>328,181</td></tr>
+      <tr><td class="l">Constant columns dropped / features used</td><td>10 / 67</td><td>8 / 69</td></tr>
+      <tr><td class="l">Duplicate rows (counted, kept)</td><td>373,613</td><td>40,154</td></tr>
+      <tr><td class="l">Attack flows (share of rows kept)</td><td>193,354 FTP + 187,589 SSH (36.5%)</td><td>92,403 Infiltration (28.2%)</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<h2 id="s1-2">Clock repair and the honest split</h2>
+<p>The raw hour histogram holds traffic in hours 01–05 and 08–12 and none in hours 06–07, which fits a 12-hour clock written without AM/PM (the afternoon is stored as 01–05). SSH brute force appears at raw 02:01–03:32 and becomes 14:01–15:32 after adding 12 hours. The repair moved 377,414 Wednesday and 163,781 Thursday flows and leaves one daytime window per day (9.0 h and 9.5 h). The evidence is data-internal only: the UNB schedule page could not be fetched, so the published schedule is not verified, and file order is not chronological (289,263 backward steps on Wednesday).</p>
+<p>The first 70% of flows in time train and the last 30% test (<a class="ref" href="#fig-1">Figure 1</a>, <a class="ref" href="#tab-2">Table 2</a>). Wed 70% tests SSH, never seen in training, so it measures unseen-attack behaviour, not leakage. We added Wed 80% after seeing that result, to test a known attack arriving later; its training and test windows share one SSH campaign, so it is an optimistic bound. Thu 70% cuts the second infiltration wave. <a class="ref" href="#tab-4">Table 4</a> shows why the split matters.</p>
+<figure id="fig-1">
+  <img src="../figures/fig1_timeline.png" alt="Flows per five minutes by label after the clock fix">
+  <figcaption><b>The repaired clock gives each attack a compact window, and the cuts fall inside them.</b> Flows per 5 min by label (log scale) after the clock fix, with the 70% cut (Wed 70%, 13:59), the 80% cut (Wed 80%, 14:35) and the 70% cut (Thu 70%, 14:40). Top: Wednesday, where FTP trains and SSH tests. Bottom: Thursday, two infiltration waves.</figcaption>
+</figure>
+<div class="tabwrap" id="tab-2">
+  <p class="tcap">Time-ordered splits. Validation window = last 20% of the training rows, used for tuning only.</p>
+  <table class="bk">
+    <thead><tr><th class="l">Split</th><th>Cut</th><th class="l">Training attacks</th><th class="l">Test attacks</th><th>Test window (h)</th><th class="l">Validation-window attacks</th></tr></thead>
+    <tbody>
+      <tr><td class="l">Wed 70%</td><td>13:59</td><td class="l">193,354 FTP</td><td class="l">187,589 SSH (unseen)</td><td>3.5</td><td class="l">10,683 FTP</td></tr>
+      <tr><td class="l">Wed 80%</td><td>14:35</td><td class="l">193,354 FTP + 69,794 SSH</td><td class="l">117,795 SSH (seen)</td><td>2.9</td><td class="l">69,794 SSH (not in fit part)</td></tr>
+      <tr><td class="l">Thu 70%</td><td>14:40</td><td class="l">63,345 Infilteration</td><td class="l">29,058 Infilteration</td><td>3.1</td><td class="l">24,808 Infilteration</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<h2 id="s1-3">Task 1 configuration and evaluation</h2>
+<p><b>Models and preprocessing.</b> LogReg and Random Forest (RF; min_samples_leaf 2) with balanced class weights, and an MLP with early stopping [2]; seed 42. Final settings on Wed 70% / Wed 80% / Thu 70%: LogReg C = 10 / 1 / 10; RF 100 / 100 / 50 trees; MLP layers 128-64 / 64-32 / 64-32. A signed log (no fitted parameters) is followed by a StandardScaler fitted on training rows only; threshold 0.5.</p>
+<p><b>Tuning protocol.</b> The last 20% of the training rows form a time-ordered validation window. Grids: C 0.1/1/10; RF trees 50/100/200 × leaf 1/2/5; MLP 32, 64-32, 128-64. A split is tuned only if its validation window has at least 100 attacks <i>and</i> they are of a type in the fit part. Wed 70% was tuned (validation holds 10,683 FTP flows; F1 varies by at most 0.003) and Thu 70% was tuned (RF spread 0.006; all families at most 0.010). Wed 80% was not: its 69,794 validation SSH flows were never seen by the fit part (193,354 FTP flows), every setting scores validation F1 of at most 0.0009, so defaults were kept.</p>
+<p><b>Metrics.</b> Attack-class precision, recall, F1 and AP. F1 carries a 95% block-bootstrap interval (5-minute blocks, 1,000 resamples) [8]; false-positive counts carry an exact Poisson 95% interval [10]; model pairs use McNemar's test [4] (exact if b + c &lt; 25). <b>False alerts per day (Task 1)</b> = benign flows flagged ÷ test-window hours × 24.</p>
+
+<h2 id="s1-4">Task 2 configuration and evaluation</h2>
+<p><b>Setup.</b> Labels were set aside first. A systematic sample of 40,000 flows per day (every 26th Wednesday, 8th Thursday flow) was signed-log transformed, scaled and reduced to 10 PCA components. <b>K-Means</b> [9]: k 2–40 × 5 seeds, silhouette [6] on 10,000 rows. <b>GMM</b>: 2–60 components (120 on Wednesday), full or diagonal covariance, BIC [7]. <b>DBSCAN</b> [5]: 16 eps values from the k-distance curve × min_samples 5, 10, 25, 50, silhouette over settings with at most 25% noise; noise is triaged as its own cluster. A simulated analyst labels each cluster by the majority of 20 random flows; labels spent are the cost. Extra sweeps vary PCA dimensions, sample size, triage size and analyst error. Results are seed means (K-Means 5, GMM and DBSCAN 3 seeds). <b>Baselines:</b> the port 21/22 rule alerts on destination port 21 or 22; the zero-payload rule alerts when forward and backward payload bytes are both zero and duration is below 1,000 µs.</p>
+<p><b>False alerts per day (Task 2) use the measured span, not 12 h.</b> The reported value is sample false-positive rate × the day's benign flows × 24 ÷ 12; we rescale it as <i>reported × 12 ÷ measured span</i>. The flows span 9.0 h (Wednesday) and 9.5 h (Thursday), so both tasks use the traffic rate in the data. Task 1 and Task 2 false-alert numbers have different denominators and are never compared in one row.</p>
+
+<h2 id="s1-5">Reproducibility</h2>
+<p>One command (<i>run_all.sh</i>) rebuilds results, figures and this PDF; <i>scripts/check_report_numbers.py</i> checks every printed number against <i>results/report_registry.json</i>. Repository: <a href="https://github.com/MZU-GH/SEC-635-Lab-1">github.com/MZU-GH/SEC-635-Lab-1</a>.</p>
+
+<!-- ======================================================= 2 RESULTS -->
+<h1 id="s2">Results and visualizations</h1>
+<figure id="fig-2">
+  <img class="full" src="../figures/fig2_confusion.png" alt="Confusion matrices">
+  <figcaption><b>RF is near-perfect on a seen campaign (6 false positives, 16 misses on Wed 80%) and unusable on Thursday.</b> Confusion matrices on the time-ordered test windows (rows: true label; cell shading is log-scaled).</figcaption>
+</figure>
+<p>On Wed 70% every model catches the same 30 of 187,589 SSH flows. On Thu 70% RF flags 24% of benign flows (16,954) and misses 62% of attacks (18,018); the MLP trades recall (0.159) for precision.</p>
+<p>On Wed 70% LogReg scores SSH below 0.5, yet a threshold set for 10,000 false alerts per day would reach 50.2% recall. On Thu 70% all curves approach the chance level of 0.295 (AP 0.398–0.439). On Wednesday the detectors recover both attack groups; on Thursday most infiltration flows (<a class="ref" href="#fig-4">Figure 4</a>, pink) sit on benign clusters, and a 2-D projection of 10 components cannot show overlap, so <a class="ref" href="#tab-7">Table 7</a> measures it in full feature space.</p>
+<figure id="fig-3">
+  <img src="../figures/fig3_pr.png" alt="Precision-recall curves">
+  <figcaption><b>LogReg ranks unseen SSH well (AP 0.964) yet its 0.5 threshold misses it: thresholds matter.</b> Attack-class precision–recall curves; chance level (attack share) dotted.</figcaption>
+</figure>
+<figure id="fig-4">
+  <img src="../figures/fig4_clusters.png" alt="Clusters on the first two principal components">
+  <figcaption><b>Wednesday attacks form compact groups detectors isolate; Thursday attacks lie inside the benign cloud.</b> 5,000 of the 40,000 sampled flows per day (random subsample) on PC1/PC2; left: true labels; others: detector result.</figcaption>
+</figure>
+<figure id="fig-5">
+  <img src="../figures/fig5_sweeps.png" alt="Parameter sweeps for every Task 2 algorithm">
+  <figcaption><b>Wednesday F1 sits on a wide plateau, but Thursday F1 stays low except at extreme settings, and the label-free choice (star) is rarely the best value.</b> Attack F1 after triage per parameter (top Wednesday, bottom Thursday); K-Means band: min–max over 5 seeds; DBSCAN: one line per min_samples.</figcaption>
+</figure>
+
+<p>K-Means F1 flattens after the chosen k. The Wednesday GMM plateaus early, yet its BIC kept improving to the grid edge (120 components): an edge, not an optimum. DBSCAN drops at large eps on both days, where clusters merge, and on Thursday no setting exceeds F1 0.447.</p>
+
+<!-- ======================================================= 3 METRIC COMPARISONS -->
+<h1 id="s3">Metric comparisons</h1>
+<h2 id="s3-1">Task 1: supervised classifiers</h2>
+<div class="tabwrap" id="tab-3">
+  <p class="tcap">Task 1, attack class, time-ordered test windows. FP = benign flows flagged. False alerts/day = FP ÷ test hours × 24, with exact Poisson 95% CI. Bold: best F1 and fewest false alerts per split. Rules have no score, so no AP.</p>
+  <table class="bk">
+    <thead><tr><th class="l">Split / model</th><th>Precision</th><th>Recall</th><th>F1</th><th>F1 95% CI</th><th>AP</th><th>FP</th><th>False alerts/day [95% CI]</th></tr></thead>
+    <tbody>
+      <tr class="grp"><td colspan="9">Wed 70%</td></tr>
+      <tr><td class="l ind">LogReg</td><td>0.4000</td><td>0.0002</td><td>0.0003</td><td>[0.000, 0.0012]</td><td>0.964</td><td>45</td><td>306 [223–410]</td></tr>
+      <tr><td class="l ind">RF</td><td>0.8824</td><td>0.0002</td><td>0.0003</td><td>[0.000, 0.0012]</td><td>0.790</td><td>4</td><td class="b">27 [7–70]</td></tr>
+      <tr><td class="l ind">MLP</td><td>0.7143</td><td>0.0002</td><td>0.0003</td><td>[0.000, 0.0012]</td><td>0.769</td><td>12</td><td>82 [42–143]</td></tr>
+      <tr><td class="l ind rule-row">Port 21/22 rule</td><td>0.9997</td><td>1.000</td><td class="b">0.9998</td><td>–</td><td>–</td><td>63</td><td>429 [330–549]</td></tr>
+      <tr class="grp"><td colspan="9">Wed 80%</td></tr>
+      <tr><td class="l ind">LogReg</td><td>0.99853</td><td>0.99994</td><td>0.99924</td><td>[0.99907, 0.99935]</td><td>0.99998</td><td>173</td><td>1,421 [1,217–1,650]</td></tr>
+      <tr><td class="l ind">RF</td><td>0.99995</td><td>0.99986</td><td class="b">0.99991</td><td>[0.99979, 0.99996]</td><td>&gt;0.99999</td><td>6</td><td class="b">49 [18–107]</td></tr>
+      <tr><td class="l ind">MLP</td><td>0.99992</td><td>0.99988</td><td class="b">0.99990</td><td>[0.99980, 0.99996]</td><td>&gt;0.99999</td><td>9</td><td>74 [34–140]</td></tr>
+      <tr><td class="l ind rule-row">Port 21/22 rule</td><td>0.99963</td><td>1.000</td><td>0.99981</td><td>–</td><td>–</td><td>44</td><td>361 [263–485]</td></tr>
+      <tr class="grp"><td colspan="9">Thu 70%</td></tr>
+      <tr><td class="l ind">LogReg</td><td>0.385</td><td>0.305</td><td>0.341</td><td>[0.174, 0.462]</td><td>0.398</td><td>14,184</td><td>110,177 [108,371–112,005]</td></tr>
+      <tr><td class="l ind">RF</td><td>0.394</td><td>0.380</td><td class="b">0.387</td><td>[0.231, 0.504]</td><td>0.439</td><td>16,954</td><td>131,693 [129,718–133,691]</td></tr>
+      <tr><td class="l ind">MLP</td><td>0.749</td><td>0.159</td><td>0.263</td><td>[0.040, 0.443]</td><td>0.430</td><td>1,553</td><td>12,063 [11,471–12,678]</td></tr>
+      <tr><td class="l ind rule-row">Port 21/22 rule</td><td>0.286</td><td>0.008</td><td>0.015</td><td>–</td><td>–</td><td>565</td><td class="b">4,389 [4,034–4,766]</td></tr>
+      <tr><td class="l ind rule-row">Zero-payload rule</td><td>0.379</td><td>0.229</td><td>0.286</td><td>–</td><td>–</td><td>10,943</td><td>85,002 [83,417–86,610]</td></tr>
+    </tbody>
+  </table>
+</div>
+<p><b>Wednesday.</b> On Wed 70% the models are equally blind (recall 0.0002) while the port rule scores F1 0.9998. On Wed 80% RF and MLP are indistinguishable (F1 0.99991, 0.99990), the port rule matches them on detection (F1 0.99981), and RF's measured advantage is false alerts: 49 per day against 361, with non-overlapping intervals. <b>Thursday.</b> No model works: RF F1 0.387, LogReg 0.341, MLP 0.263, at 12,063–131,693 false alerts per day; the port rule catches 0.8% of infiltration and the zero-payload rule (F1 0.286) is no better than the best classifier.</p>
+
+<div class="tabwrap" id="tab-4">
+  <p class="tcap">Does the split matter? F1 under a random split, the honest time split and (Thursday) the unrepaired clock, run for RF only. Thursday time-split cells carry the 95% block-bootstrap CI.</p>
+  <table class="bk">
+    <thead><tr><th class="l">Evaluation</th><th>LogReg</th><th>RF</th><th>MLP</th></tr></thead>
+    <tbody>
+      <tr><td class="l">Wed: random split, 70% train</td><td>0.99987</td><td>0.99997</td><td>0.99997</td></tr>
+      <tr><td class="l">Wed: honest time split (Wed 80%)</td><td>0.99924</td><td>0.99991</td><td>0.99990</td></tr>
+      <tr><td class="l">Thu: random split, 70% train</td><td>0.438</td><td>0.489</td><td>0.389</td></tr>
+      <tr><td class="l">Thu: honest time split (Thu 70%)</td><td>0.341 [0.174, 0.462]</td><td>0.387 [0.231, 0.504]</td><td>0.263 [0.040, 0.443]</td></tr>
+      <tr><td class="l">Thu: unrepaired clock, 70% train</td><td>not run</td><td>0.592</td><td>not run</td></tr>
+    </tbody>
+  </table>
+</div>
+<p><b>The split matters little on Wednesday and moderately on Thursday; the clock matters most.</b> On Wednesday random-split inflation is negligible (F1 differs by at most 0.0006) because brute force is trivially separable. On Thursday all three models score higher on a random split (LogReg +0.097, RF +0.102, MLP +0.127), yet each random value lies inside its time-split CI, so the direction is consistent but the size is uncertain. The unrepaired clock is the largest distortion: Thursday RF scores 0.592, outside the time-split CI [0.231, 0.504]. The earlier comparison against Wed 70% mixed leakage with an unseen attack type (RF F1 0.0003) and is withdrawn.</p>
+<p><b>Significance</b> (McNemar; b = flows only the first model gets right, c = only the second). Wed 80%: RF vs MLP is a tie (b = 5, c = 4, p = 1.00); both beat LogReg (p &lt; 0.001); RF beats the port rule (p = 0.01), with 22 errors against 44. On Wed 70% pairs differ only through a few false positives (p &lt; 0.001). Thu 70%: every pair differs (p &lt; 0.001, p &lt; 0.001, p &lt; 0.001 for RF vs the port rule), but McNemar treats flows as independent and the block-bootstrap CIs overlap widely (RF [0.231, 0.504], MLP [0.040, 0.443]), so the ranking is weak evidence.</p>
+
+<h2 id="s3-2">Task 2: unsupervised detectors</h2>
+<div class="tabwrap" id="tab-5">
+  <p class="tcap">Task 2 on the 40,000-flow samples, detectors chosen without labels. F1 is the seed mean, with its min–max over seeds. False alerts/day use the measured-span convention (Section 1.4). Bold: best F1 and fewest false alerts per day.</p>
+  <table class="bk">
+    <thead><tr><th class="l">Day / method</th><th class="l">Chosen setting</th><th>Precision</th><th>Recall</th><th>F1</th><th>F1 seed range</th><th>Analyst labels</th><th>False alerts/day</th><th class="l">At edge?</th></tr></thead>
+    <tbody>
+      <tr class="grp"><td colspan="9">Wednesday</td></tr>
+      <tr><td class="l ind">K-Means</td><td class="l">k 16</td><td>0.8862</td><td>1.000</td><td>0.9397</td><td>0.9392–0.9401</td><td>320</td><td>129,774</td><td class="l">interior</td></tr>
+      <tr><td class="l ind">GMM</td><td class="l">120, full</td><td>0.9988</td><td>0.9972</td><td>0.9980</td><td>0.9980–0.9981</td><td>2,218</td><td>1,178</td><td class="l">upper edge</td></tr>
+      <tr><td class="l ind">DBSCAN</td><td class="l">eps 0.284, ms 50, 34 cl.</td><td>0.9997</td><td>0.9992</td><td>0.9994</td><td>0.9994–0.9994</td><td>700</td><td class="b">347</td><td class="l">ms at edge</td></tr>
+      <tr><td class="l ind">Port rule</td><td class="l"></td><td>0.9990</td><td>1.000</td><td class="b">0.9995</td><td>–</td><td>0</td><td>970</td><td class="l">–</td></tr>
+      <tr class="grp"><td colspan="9">Thursday</td></tr>
+      <tr><td class="l ind">K-Means</td><td class="l">k 17</td><td>0.5936</td><td>0.2934</td><td>0.3875</td><td>0.3718–0.4063</td><td>340</td><td>52,642</td><td class="l">interior</td></tr>
+      <tr><td class="l ind">GMM</td><td class="l">54, full</td><td>0.8163</td><td>0.2311</td><td>0.3546</td><td>0.3357–0.3906</td><td>1,080</td><td>15,902</td><td class="l">interior</td></tr>
+      <tr><td class="l ind">DBSCAN</td><td class="l">eps 0.333, ms 50, 52 cl.</td><td>0.8310</td><td>0.2243</td><td>0.3470</td><td>0.3239–0.3864</td><td>1,060</td><td>14,749</td><td class="l">ms at edge</td></tr>
+      <tr><td class="l ind">Port rule</td><td class="l"></td><td>0.3574</td><td>0.0094</td><td>0.0184</td><td>–</td><td>0</td><td class="b">4,112</td><td class="l">–</td></tr>
+      <tr><td class="l ind">Zero-payload rule</td><td class="l"></td><td>0.4668</td><td>0.3360</td><td class="b">0.3907</td><td>–</td><td>0</td><td>93,065</td><td class="l">–</td></tr>
+    </tbody>
+  </table>
+</div>
+<p><b>Wednesday.</b> All three detectors separate brute force; DBSCAN (F1 0.9994) matches the port rule (F1 0.9995) at fewer false alerts per day (347 against 970) for 700 analyst labels, while K-Means raises 129,774 per day (F1 0.940). <b>Thursday.</b> F1 is 0.388 (K-Means), 0.355 (GMM) and 0.347 (DBSCAN); the zero-payload rule scores 0.3907 on the same sample with no labels.</p>
+<div class="tabwrap" id="tab-6">
+  <p class="tcap">Stability: seed-mean attack F1 range (min–max). Local = within one grid step of the choice; PCA 5–20 components (and 11/13 for 95% variance); sample 10,000–80,000 flows; triage 5–50 flows per cluster; analyst error 0%–10%.</p>
+  <table class="bk">
+    <thead><tr><th class="l">Day</th><th class="l">Detector</th><th>Local (±1 step)</th><th>PCA dims</th><th>Sample size</th><th>Triage n</th><th>Analyst error</th></tr></thead>
+    <tbody>
+      <tr><td class="l">Wed</td><td class="l">K-Means</td><td>0.9396–0.9397</td><td>0.9331–0.9490</td><td>0.9398–0.9424</td><td>0.9398</td><td>0.9398</td></tr>
+      <tr><td class="l">Wed</td><td class="l">GMM</td><td>0.9980</td><td>0.9980–0.9987</td><td>0.9976–0.9986</td><td>0.9980</td><td>0.9980</td></tr>
+      <tr><td class="l">Wed</td><td class="l">DBSCAN</td><td>0.9640–0.9994</td><td>0.9638–0.9996</td><td>0.9620–0.9994</td><td>0.9994</td><td>0.9994</td></tr>
+      <tr><td class="l">Thu</td><td class="l">K-Means</td><td>0.384–0.388</td><td>0.318–0.398</td><td>0.384–0.398</td><td>0.294–0.398</td><td>0.398–0.408</td></tr>
+      <tr><td class="l">Thu</td><td class="l">GMM</td><td>0.337–0.385</td><td>0.355–0.369</td><td>0.355–0.393</td><td>0.355–0.380</td><td>0.345–0.355</td></tr>
+      <tr><td class="l">Thu</td><td class="l">DBSCAN</td><td>0.331–0.406</td><td>0.323–0.380</td><td>0.333–0.366</td><td>0.328–0.366</td><td>0.347–0.354</td></tr>
+    </tbody>
+  </table>
+</div>
+<p><b>Stability.</b> On Thursday the detectors lie within 0.041 F1 and their seed ranges overlap (0.372–0.386), so they cannot be ranked. F1 moves most with triage size for K-Means (0.104), PCA dimension for DBSCAN (0.057) and sample size for GMM (0.038); analyst error up to 10% moves it by at most 0.010. Only 29 of 64 Thursday DBSCAN settings meet the noise cap, and F1 spans 0.019–0.447.</p>
+
+<!-- ======================================================= 4 CRITICAL REFLECTION -->
+<h1 id="s4">Critical reflection</h1>
+<h2 id="s4-1">Where each technique added value and fell short</h2>
+<p class="lead"><b>Supervised, value.</b> RF is near-perfect on a campaign it has seen: on Wed 80% F1 0.99991 at 49 false alerts per day, the lowest point estimate there (LogReg 1,421, port rule 361; the MLP's 74 [34–140] overlaps). Brute-force flows are easy to separate: the median found brute-force flow has 333,333 packets/s and a 26,883-byte initial window, against 111 and 278 for benign. <b>Shortfall.</b> RF is blind to an unseen attack type (recall 0.0002 on Wed 70%; the port rule 1.000). On infiltration it flags 24% of benign traffic at threshold 0.5, and a threshold chosen on validation for at most 1,000 false alerts per day gives 12,009 on test (12× the budget, recall 15%) against 981 on validation: the budget does not transfer between windows (distribution shift).</p>
+<p class="lead"><b>Unsupervised, value.</b> Wednesday brute force is separated without labels: DBSCAN reaches F1 0.9994 at 347 false alerts per day for 700 analyst labels, GMM F1 0.9980. <b>Shortfall.</b> The selection criteria are unstable at the grid edges. GMM BIC never turns by 120 components on Wednesday. DBSCAN silhouette keeps rising past min_samples 50: it goes from 0.817 to 0.876 (min_samples 200) on Wednesday and from 0.751 to 0.758 (100) on Thursday, while F1 falls from 0.999 to 0.964 and from 0.331 to 0.299. The label-free choice is not settled.</p>
+
+<h2 id="s4-2">What was found and what was missed (infiltration)</h2>
+<p><a class="ref" href="#tab-7">Table 7</a> compares the groups. <b>(a) Most clustering finds are reproducible by one line.</b> The zero-payload rule catches 2,923 of the 3,482 flows any detector found (84%); the port rule catches 54. <b>(b) The interesting finds are the single-algorithm ones no rule reproduces.</b> The GMM-only (85) and DBSCAN-only (97) groups are long, near-silent connections (median 687,489 and 9,014,173 µs); the payload rule catches 1 and 0 of them, the port rule 8 and 0. <b>(c) Missed flows look like benign traffic.</b> 86% of the 8,076 flows missed by all have mostly benign neighbours, against 7% of found flows; their top ports are 53, 443 and 3389 (39%, 18%, 14%). <b>(d) Label noise caps any flow-level detector.</b> 40% of all sampled infiltration flows (80% of the found ones, 23% of the missed) are feature-identical to a benign flow, because infiltration labels are assigned by host and time window [3]. It does not separate found from missed but explains why found clusters carry false alerts.</p>
+<div class="tabwrap" id="tab-7">
+  <p class="tcap">Thursday infiltration in the 40,000-flow sample: found versus missed. Medians per group (B = total payload bytes). Payload and port rule: flows caught (share of group). Identical to benign: all model features equal to a benign flow anywhere in the day. Benign neighbours: more than 5 of 10 nearest PCA-space neighbours in the sample are benign.</p>
+  <table class="bk">
+    <thead><tr><th class="l">Group</th><th>Flows</th><th>Dur. (µs)</th><th>Fwd / bwd B</th><th>Pkts/s</th><th>Init. win.</th><th>Payload rule</th><th>Port rule</th><th>Identical to benign</th><th>Benign nbrs</th></tr></thead>
+    <tbody>
+      <tr><td class="l">Benign (reference)</td><td>28,442</td><td>18,684</td><td>43 / 89</td><td>157</td><td>256</td><td>4,436 (16%)</td><td>196 (1%)</td><td>–</td><td>89%</td></tr>
+      <tr><td class="l">Found by any detector</td><td>3,482</td><td>250</td><td>0 / 0</td><td>8,000</td><td>1,024</td><td>2,923 (84%)</td><td>54 (2%)</td><td>80%</td><td>7%</td></tr>
+      <tr><td class="l">K-Means only</td><td>984</td><td>2</td><td>0 / 0</td><td>1,000,000</td><td>1,024</td><td>931 (95%)</td><td>2 (0%)</td><td>–</td><td>–</td></tr>
+      <tr><td class="l">GMM only</td><td>85</td><td>687,489</td><td>0 / 0</td><td>4.9</td><td>128</td><td>1 (1%)</td><td>8 (9%)</td><td>–</td><td>–</td></tr>
+      <tr><td class="l">DBSCAN only</td><td>97</td><td>9,014,173</td><td>0 / 0</td><td>0.3</td><td>8,192</td><td>0 (0%)</td><td>0 (0%)</td><td>–</td><td>–</td></tr>
+      <tr><td class="l">Missed by all</td><td>8,076</td><td>17,882</td><td>46 / 105</td><td>158</td><td>237</td><td>960 (12%)</td><td>55 (1%)</td><td>23%</td><td>86%</td></tr>
+      <tr><td class="l">All infiltration (sampled)</td><td>11,558</td><td>950</td><td>35 / 48</td><td>2,161</td><td>1,024</td><td>3,883 (34%)</td><td>109 (1%)</td><td>40%</td><td>62%</td></tr>
+    </tbody>
+  </table>
+  <p class="tnote">Not computed per single-detector group (–); for benign flows the first test is trivially true.</p>
+</div>
+
+<h2 id="s4-3">Limits</h2>
+<p>The analyst is assumed error-free in the headline results (error of 0%–10% moves F1 by at most 0.010). Daily counts assume a constant rate over 9.0 h and 9.5 h spans. The port rule was written with hindsight. The GMM grid uses a single seed; each sample is 40,000 flows. Wed 80% is an optimistic bound. The attack schedule was not verified externally.</p>
+
+<!-- ======================================================= 5 PRODUCTION -->
+<h1 id="s5">Production recommendation</h1>
+<p><b>Random Forest on Wednesday-like brute force: this model raises 49 false alerts per day (95% CI 18–107), and here is why that is acceptable:</b> at 1 minute per alert it costs 0.8 analyst-hours per day (10% of one 8-hour shift; 1.8 hours at the upper CI bound) while it catches 99.99% of a campaign it has seen.</p>
+<p><b>Random Forest on Thursday infiltration: this model raises 131,693 false alerts per day, and here is why that is not acceptable:</b> that is 2,195 analyst-hours per day, or 274 analysts on 8-hour shifts, and it still catches only 38.0% of infiltration flows. A validation-chosen threshold still gives 12,009 per day at 15% recall.</p>
+<div class="tabwrap" id="tab-8">
+  <p class="tcap">What to deploy and what it costs. False alerts/day: Task 1 convention (supervised, port rule) or Task 2 measured-span convention (clustering, payload rule); not comparable across rows.</p>
+  <table class="bk t8">
+    <colgroup><col style="width:15%"><col style="width:27%"><col style="width:58%"></colgroup>
+    <thead><tr><th>Technique</th><th>Deploy as</th><th>Measured cost</th></tr></thead>
+    <tbody>
+      <tr><td>Port 21/22 rule</td><td>FTP/SSH brute-force alerting.</td><td>361–429 false alerts/day (Wednesday windows); recall 0.8% on infiltration; no labels.</td></tr>
+      <tr><td>Random Forest</td><td>Second-line scoring, labelled families.</td><td>49 false alerts/day on Wed 80% (312 fewer than the rule); recall 0.0002 on unseen attacks; 92 s training.</td></tr>
+      <tr><td>GMM / DBSCAN</td><td>Daily hunting review, not alerting.</td><td>700–2,218 labels per 40,000 flows; 1,178–15,902 (GMM), 347–14,749 (DBSCAN) false alerts/day if alerting.</td></tr>
+      <tr><td>Zero-payload rule</td><td>Hunting query, not an alert.</td><td>91,446 false alerts/day at recall 33%, precision 0.461.</td></tr>
+      <tr><td>Not deployed</td><td>LogReg, MLP, K-Means.</td><td>LogReg (1,421 false alerts/day, 29× RF); MLP (ties RF, p = 1.00; recall 0.159 on Thursday); K-Means (129,774 false alerts/day on Wednesday).</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+<p><b>Do this.</b> Fix the clock at ingestion. Retrain on a rolling, time-ordered schedule and keep a rule for unlabelled attack types. Move infiltration detection to host and session level: flow features carry no signal for 40% of it.</p>
+<p class="repo">Repository: <a href="https://github.com/MZU-GH/SEC-635-Lab-1">github.com/MZU-GH/SEC-635-Lab-1</a></p>
+
+<!-- ======================================================= REFERENCES -->
+<h1 class="unnum" id="s-refs">References</h1>
+<div class="refs" style="columns:2; column-gap:6mm">
+<p>[1] Canadian Institute for Cybersecurity, “CSE-CIC-IDS2018,” Univ. of New Brunswick. [Online]. Available: https://www.unb.ca/cic/datasets/ids-2018.html</p>
+<p>[2] F. Pedregosa et al., “Scikit-learn: Machine learning in Python,” JMLR, vol. 12, pp. 2825–2830, 2011.</p>
+<p>[3] I. Sharafaldin, A. H. Lashkari, and A. A. Ghorbani, “Toward generating a new intrusion detection dataset and intrusion traffic characterization,” in Proc. ICISSP, 2018, pp. 108–116.</p>
+<p>[4] Q. McNemar, “Note on the sampling error of the difference between correlated proportions or percentages,” Psychometrika, vol. 12, pp. 153–157, 1947.</p>
+<p>[5] M. Ester, H.-P. Kriegel, J. Sander, and X. Xu, “A density-based algorithm for discovering clusters in large spatial databases with noise,” in Proc. KDD, 1996, pp. 226–231.</p>
+<p>[6] P. J. Rousseeuw, “Silhouettes: A graphical aid to the interpretation and validation of cluster analysis,” J. Comput. Appl. Math., vol. 20, pp. 53–65, 1987.</p>
+<p>[7] G. Schwarz, “Estimating the dimension of a model,” Ann. Statist., vol. 6, pp. 461–464, 1978.</p>
+<p>[8] H. R. Künsch, “The jackknife and the bootstrap for general stationary observations,” Ann. Statist., vol. 17, pp. 1217–1241, 1989.</p>
+<p>[9] S. Lloyd, “Least squares quantization in PCM,” <i>IEEE Trans. Inf. Theory</i>, vol. 28, no. 2, pp. 129–137, 1982.</p>
+<p>[10] F. Garwood, “Fiducial limits for the Poisson distribution,” <i>Biometrika</i>, vol. 28, pp. 437–442, 1936.</p>
+</div>
+</body>
+</html>

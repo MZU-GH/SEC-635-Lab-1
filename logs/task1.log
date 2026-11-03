@@ -1,0 +1,62 @@
+wed70 LogReg {'C': 0.1} 0.9964
+wed70 LogReg {'C': 1} 0.9988
+wed70 LogReg {'C': 10} 0.9989
+wed70 LogReg {'precision': 0.4, 'recall': 0.00015992408936558113, 'f1': 0.00031972035126609256, 'ap': 0.9639934450846885, 'train_s': 3.117136240005493} 45
+wed70 RandomForest {'n_estimators': 50, 'min_samples_leaf': 1} 1.0
+wed70 RandomForest {'n_estimators': 50, 'min_samples_leaf': 2} 1.0
+wed70 RandomForest {'n_estimators': 50, 'min_samples_leaf': 5} 1.0
+wed70 RandomForest {'n_estimators': 100, 'min_samples_leaf': 1} 1.0
+wed70 RandomForest {'n_estimators': 100, 'min_samples_leaf': 2} 1.0
+wed70 RandomForest {'n_estimators': 100, 'min_samples_leaf': 5} 1.0
+wed70 RandomForest {'n_estimators': 200, 'min_samples_leaf': 1} 1.0
+wed70 RandomForest {'n_estimators': 200, 'min_samples_leaf': 2} 1.0
+wed70 RandomForest {'n_estimators': 200, 'min_samples_leaf': 5} 1.0
+wed70 RandomForest {'precision': 0.8823529411764706, 'recall': 0.00015992408936558113, 'f1': 0.00031979021761724305, 'ap': 0.7897084946970515, 'train_s': 25.579819679260254} 4
+wed70 MLP {'hidden': (32,)} 0.9988
+wed70 MLP {'hidden': (64, 32)} 0.9988
+wed70 MLP {'hidden': (128, 64)} 0.9995
+wed70 MLP {'precision': 0.7142857142857143, 'recall': 0.00015992408936558113, 'f1': 0.0003197765827608444, 'ap': 0.7688627615930341, 'train_s': 1870.7269320487976} 12
+wed80 LogReg {'C': 0.1} 0.0009
+wed80 LogReg {'C': 1} 0.0009
+wed80 LogReg {'C': 10} 0.0009
+wed80 LogReg {'precision': 0.9985334135858461, 'recall': 0.9999405747272805, 'f1': 0.999236498752948, 'ap': 0.9999792038192046, 'train_s': 7.407681465148926} 173
+wed80 RandomForest {'n_estimators': 50, 'min_samples_leaf': 1} 0.0009
+wed80 RandomForest {'n_estimators': 50, 'min_samples_leaf': 2} 0.0009
+wed80 RandomForest {'n_estimators': 50, 'min_samples_leaf': 5} 0.0009
+wed80 RandomForest {'n_estimators': 100, 'min_samples_leaf': 1} 0.0009
+wed80 RandomForest {'n_estimators': 100, 'min_samples_leaf': 2} 0.0009
+wed80 RandomForest {'n_estimators': 100, 'min_samples_leaf': 5} 0.0009
+wed80 RandomForest {'n_estimators': 200, 'min_samples_leaf': 1} 0.0009
+wed80 RandomForest {'n_estimators': 200, 'min_samples_leaf': 2} 0.0009
+wed80 RandomForest {'n_estimators': 200, 'min_samples_leaf': 5} 0.0009
+wed80 RandomForest {'precision': 0.9999490597274695, 'recall': 0.9998641708052124, 'f1': 0.9999066134646405, 'ap': 0.9999999713948212, 'train_s': 92.48417282104492} 6
+wed80 MLP {'hidden': (32,)} 0.0009
+wed80 MLP {'hidden': (64, 32)} 0.0009
+wed80 MLP {'hidden': (128, 64)} 0.0009
+wed80 MLP {'precision': 0.9999235928347059, 'recall': 0.9998811494545609, 'f1': 0.9999023706942293, 'ap': 0.9999984781070388, 'train_s': 96.61488103866577} 9
+thu70 LogReg {'C': 0.1} 0.4523
+thu70 LogReg {'C': 1} 0.4575
+thu70 LogReg {'C': 10} 0.4613
+thu70 LogReg {'precision': 0.3849356055678418, 'recall': 0.30549246334916375, 'f1': 0.3406435273124964, 'ap': 0.39821918951912894, 'train_s': 51.86143255233765} 14184
+thu70 RandomForest {'n_estimators': 50, 'min_samples_leaf': 1} 0.475
+thu70 RandomForest {'n_estimators': 50, 'min_samples_leaf': 2} 0.4751
+thu70 RandomForest {'n_estimators': 50, 'min_samples_leaf': 5} 0.4732
+thu70 RandomForest {'n_estimators': 100, 'min_samples_leaf': 1} 0.4704
+thu70 RandomForest {'n_estimators': 100, 'min_samples_leaf': 2} 0.4732
+thu70 RandomForest {'n_estimators': 100, 'min_samples_leaf': 5} 0.4709
+thu70 RandomForest {'n_estimators': 200, 'min_samples_leaf': 1} 0.4686
+thu70 RandomForest {'n_estimators': 200, 'min_samples_leaf': 2} 0.4734
+thu70 RandomForest {'n_estimators': 200, 'min_samples_leaf': 5} 0.4686
+thu70 RandomForest {'precision': 0.3943702221904694, 'recall': 0.3799297955812513, 'f1': 0.3870153544135175, 'ap': 0.4387889651143728, 'train_s': 16.440561294555664} 16954
+thu70 MLP {'hidden': (32,)} 0.289
+thu70 MLP {'hidden': (64, 32)} 0.2988
+thu70 MLP {'hidden': (128, 64)} 0.2974
+thu70 MLP {'precision': 0.7488274300501375, 'recall': 0.15933649941496317, 'f1': 0.2627621236627791, 'ap': 0.43013640750905674, 'train_s': 58.595279932022095} 1553
+random wed LogReg 0.9998687606631962
+random wed RandomForest 0.9999693746746059
+random wed MLP 0.9999693749425781
+random thu LogReg 0.43755263446962755
+random thu RandomForest 0.48881245046959043
+random thu MLP 0.3894498014747589
+unrepaired wed 0.9999924937322665
+unrepaired thu 0.5921214120752226

@@ -1,0 +1,10 @@
+{
+  "old_best_sil": 0.7510472536087036,
+  "old_best_ms": 50,
+  "old_best_f1": 0.3306183157447411,
+  "ext_best_sil": 0.7578837871551514,
+  "ext_best_ms": 100,
+  "ext_best_f1": 0.29902209344440417,
+  "ext_valid": 11,
+  "ext_improves_silhouette": true
+}

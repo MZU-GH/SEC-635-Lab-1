@@ -1,0 +1,14 @@
+thu kmeans k 17 1039 s
+thu gmm full done 2312 s
+thu gmm diag done 2510 s
+thu gmm 54 full 2510 s
+thu dbscan grid done 2853 s
+thu dbscan 0.3332640073560547 50 2853 s
+thu final 2991 s
+thu kmeans pca sweep 2997 s
+thu kmeans size sweep 3001 s
+thu gmm pca sweep 3669 s
+thu gmm size sweep 4203 s
+thu dbscan pca sweep 5234 s
+thu dbscan size sweep 5293 s
+thu done 5380 s

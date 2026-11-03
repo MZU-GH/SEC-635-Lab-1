@@ -1,0 +1,414 @@
+{
+  "day": "thu",
+  "n_sample": 40000,
+  "sample_step": 8,
+  "sample_attack": 11558,
+  "benign_day": 235778,
+  "n_pca": 10,
+  "triage_n": 20,
+  "silhouette_subsample": 10000,
+  "capture_hours_assumed": 12,
+  "span_hours_measured": 9.483333333333333,
+  "kmeans": {
+    "k": 17,
+    "silhouette": 0.6456738948822022,
+    "edge": {
+      "index": 15,
+      "n": 39,
+      "at_lower_edge": false,
+      "at_upper_edge": false
+    },
+    "stability_f1_pm1": [
+      0.38355258505428363,
+      0.38754734020721154,
+      0.38832810694941017
+    ],
+    "seeds": [
+      42,
+      43,
+      44,
+      45,
+      46
+    ],
+    "grid": [
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17,
+      18,
+      19,
+      20,
+      21,
+      22,
+      23,
+      24,
+      25,
+      26,
+      27,
+      28,
+      29,
+      30,
+      31,
+      32,
+      33,
+      34,
+      35,
+      36,
+      37,
+      38,
+      39,
+      40
+    ],
+    "best_f1_in_grid_seedmean": 0.39530762486162985,
+    "best_f1_k": 24
+  },
+  "gmm": {
+    "components": 54,
+    "cov": "full",
+    "bic": -1400426.74518994,
+    "edge": {
+      "index": 35,
+      "n": 39,
+      "at_lower_edge": false,
+      "at_upper_edge": false
+    },
+    "grid_max": 60,
+    "grid": [
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17,
+      18,
+      19,
+      20,
+      22,
+      24,
+      26,
+      28,
+      30,
+      32,
+      34,
+      36,
+      38,
+      40,
+      42,
+      44,
+      46,
+      48,
+      50,
+      52,
+      54,
+      56,
+      58,
+      60
+    ],
+    "stability_f1_pm1": [
+      0.3848404757409854,
+      0.33738495046722405,
+      0.37128414971717416
+    ],
+    "reg_covar_escalated": [
+      0.0001
+    ],
+    "bic_min_at_grid_max": false,
+    "best_f1_in_grid": 0.40424423286438355,
+    "bic_by_cov_min": {
+      "full": -1400426.74518994,
+      "diag": -649637.3589379152
+    }
+  },
+  "dbscan": {
+    "eps": 0.3332640073560547,
+    "min_samples": 50,
+    "silhouette": 0.7510472536087036,
+    "n_clusters": 52,
+    "noise": 0.163225,
+    "eps_grid": [
+      0.0017910108968694739,
+      0.0030204193689688315,
+      0.005093734036117888,
+      0.008590239718785754,
+      0.014486861289374256,
+      0.024431116812562673,
+      0.041201434650781035,
+      0.0694834472900429,
+      0.11717915864409463,
+      0.1976147666252244,
+      0.3332640073560547,
+      0.5620273246566171,
+      0.947821266888861,
+      1.5984367922247917,
+      2.6956560988808,
+      4.546042632889631
+    ],
+    "eps_edge": {
+      "index": 10,
+      "n": 16,
+      "at_lower_edge": false,
+      "at_upper_edge": false
+    },
+    "ms_edge": {
+      "index": 3,
+      "n": 4,
+      "at_lower_edge": false,
+      "at_upper_edge": true
+    },
+    "stability_f1_neighbours": [
+      0.36575829383886255,
+      0.3306183157447411,
+      0.4058246989638757,
+      0.3663899626132691
+    ],
+    "f1_min_all": 0.018838842267511563,
+    "f1_max_all": 0.44671896919000365,
+    "n_settings": 64,
+    "n_valid_settings": 29,
+    "kdist_quantile_of_eps": 0.78035
+  },
+  "final": {
+    "kmeans": {
+      "precision": 0.5936393939103634,
+      "recall": 0.29342446790102095,
+      "f1": 0.38754734020721154,
+      "labels_used": 340.0,
+      "fa_day": 41601.44558047957,
+      "f1_min": 0.37182306940371457,
+      "f1_max": 0.40632075926193567,
+      "n_seeds": 5
+    },
+    "gmm": {
+      "precision": 0.8163073930330405,
+      "recall": 0.23106650516236948,
+      "f1": 0.35455735691768914,
+      "labels_used": 1080.0,
+      "fa_day": 12567.310597004429,
+      "f1_min": 0.3357273623433319,
+      "f1_max": 0.39055975794251135,
+      "n_seeds": 3
+    },
+    "dbscan": {
+      "precision": 0.8310060716841621,
+      "recall": 0.22431793274499626,
+      "f1": 0.34695919971165584,
+      "labels_used": 1060.0,
+      "fa_day": 11655.434498277196,
+      "f1_min": 0.32387216701222565,
+      "f1_max": 0.3863871163780006,
+      "n_seeds": 3
+    }
+  },
+  "pca_k95": 13,
+  "found_missed": {
+    "counts": {
+      "benign": 28442,
+      "found_any": 3482,
+      "missed_all": 8076,
+      "all_attack": 11558,
+      "only_kmeans": 984,
+      "only_gmm": 85,
+      "only_dbscan": 97
+    },
+    "medians": {
+      "benign": {
+        "Flow Duration": 18684.0,
+        "TotLen Fwd Pkts": 43.0,
+        "TotLen Bwd Pkts": 89.0,
+        "Flow Pkts/s": 156.85659790039062,
+        "Init Fwd Win Byts": 256.0
+      },
+      "found_any": {
+        "Flow Duration": 250.0,
+        "TotLen Fwd Pkts": 0.0,
+        "TotLen Bwd Pkts": 0.0,
+        "Flow Pkts/s": 8000.0,
+        "Init Fwd Win Byts": 1024.0
+      },
+      "missed_all": {
+        "Flow Duration": 17882.0,
+        "TotLen Fwd Pkts": 46.0,
+        "TotLen Bwd Pkts": 105.0,
+        "Flow Pkts/s": 158.29672241210938,
+        "Init Fwd Win Byts": 237.0
+      },
+      "all_attack": {
+        "Flow Duration": 950.0,
+        "TotLen Fwd Pkts": 35.0,
+        "TotLen Bwd Pkts": 48.0,
+        "Flow Pkts/s": 2160.99462890625,
+        "Init Fwd Win Byts": 1024.0
+      },
+      "only_kmeans": {
+        "Flow Duration": 2.0,
+        "TotLen Fwd Pkts": 0.0,
+        "TotLen Bwd Pkts": 0.0,
+        "Flow Pkts/s": 1000000.0,
+        "Init Fwd Win Byts": 1024.0
+      },
+      "only_gmm": {
+        "Flow Duration": 687489.0,
+        "TotLen Fwd Pkts": 0.0,
+        "TotLen Bwd Pkts": 0.0,
+        "Flow Pkts/s": 4.905158519744873,
+        "Init Fwd Win Byts": 128.0
+      },
+      "only_dbscan": {
+        "Flow Duration": 9014173.0,
+        "TotLen Fwd Pkts": 0.0,
+        "TotLen Bwd Pkts": 0.0,
+        "Flow Pkts/s": 0.3328092396259308,
+        "Init Fwd Win Byts": 8192.0
+      }
+    },
+    "top_ports_missed": {
+      "53": 3186,
+      "443": 1489,
+      "3389": 1170,
+      "80": 349,
+      "445": 326,
+      "0": 143
+    },
+    "rules_on_groups": {
+      "benign": {
+        "port_rule": 196,
+        "payload_rule": 4436
+      },
+      "found_any": {
+        "port_rule": 54,
+        "payload_rule": 2923
+      },
+      "missed_all": {
+        "port_rule": 55,
+        "payload_rule": 960
+      },
+      "all_attack": {
+        "port_rule": 109,
+        "payload_rule": 3883
+      },
+      "only_kmeans": {
+        "port_rule": 2,
+        "payload_rule": 931
+      },
+      "only_gmm": {
+        "port_rule": 8,
+        "payload_rule": 1
+      },
+      "only_dbscan": {
+        "port_rule": 0,
+        "payload_rule": 0
+      }
+    },
+    "top_ports_missed_share": {
+      "53": 0.39450222882615155,
+      "443": 0.18437345220406143,
+      "3389": 0.1448736998514116,
+      "80": 0.04321446260525012,
+      "445": 0.040366518078256565,
+      "0": 0.01770678553739475
+    },
+    "found_by_detector": {
+      "kmeans": 3300,
+      "gmm": 2401,
+      "dbscan": 2334
+    },
+    "ordinary_checks": {
+      "missed_all": {
+        "n": 8076,
+        "dup_of_benign": 1855,
+        "mostly_benign_nn": 6914
+      },
+      "found_any": {
+        "n": 3482,
+        "dup_of_benign": 2778,
+        "mostly_benign_nn": 250
+      },
+      "all_attack": {
+        "n": 11558,
+        "dup_of_benign": 4633,
+        "mostly_benign_nn": 7164
+      },
+      "benign": {
+        "n": 28442,
+        "dup_of_benign": 28442,
+        "mostly_benign_nn": 25231
+      }
+    },
+    "nn_k": 10,
+    "nn_rule": "more than 5 of 10 nearest PCA-space neighbours (within the 40,000-flow sample) are benign",
+    "dup_rule": "all model features (same set the detectors use) identical to a benign flow anywhere in the same day"
+  },
+  "rules": {
+    "port": {
+      "sample": {
+        "tp": 109,
+        "fp": 196,
+        "fn": 11449,
+        "tn": 28246,
+        "precision": 0.35737704918032787,
+        "recall": 0.009430697352483128,
+        "f1": 0.018376464637949928,
+        "labels_used": 0,
+        "fpr": 0.006891217213979326,
+        "fa_day": 3249.5948245552354
+      },
+      "full_day": {
+        "tp": 789,
+        "fp": 1622,
+        "fn": 91614,
+        "tn": 234156,
+        "precision": 0.32725010369141433,
+        "recall": 0.008538683808967242,
+        "f1": 0.016643111776741833,
+        "fa_day": 3244.0
+      }
+    },
+    "payload": {
+      "sample": {
+        "tp": 3883,
+        "fp": 4436,
+        "fn": 7675,
+        "tn": 24006,
+        "precision": 0.4667628320711624,
+        "recall": 0.3359577781623118,
+        "f1": 0.3907028223574986,
+        "labels_used": 0,
+        "fpr": 0.1559665283735321,
+        "fa_day": 73546.9522537093
+      },
+      "full_day": {
+        "tp": 30868,
+        "fp": 36134,
+        "fn": 61535,
+        "tn": 199644,
+        "precision": 0.4607026655920719,
+        "recall": 0.3340584180167311,
+        "f1": 0.3872902355635018,
+        "fa_day": 72268.0
+      }
+    }
+  },
+  "runtime_s": 5380.017399787903
+}

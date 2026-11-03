@@ -1,0 +1,14 @@
+wed kmeans k 16 1078 s
+wed gmm full done 2725 s
+wed gmm diag done 2978 s
+wed gmm 120 full 2978 s
+wed dbscan grid done 3339 s
+wed dbscan 0.2840255831875996 50 3339 s
+wed final 3649 s
+wed kmeans pca sweep 3655 s
+wed kmeans size sweep 3659 s
+wed gmm pca sweep 5327 s
+wed gmm size sweep 5975 s
+wed dbscan pca sweep 7119 s
+wed dbscan size sweep 7167 s
+wed done 7262 s
